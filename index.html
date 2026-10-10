@@ -57,8 +57,8 @@
   @media(max-width:940px){#main.on{grid-template-columns:1fr}}
 
   .stage{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:0 30px 70px -35px rgba(0,0,0,.85)}
-  .stage-in{border:1px solid rgba(217,164,65,.16);border-radius:9px;overflow:hidden}
-  #cv{display:block;width:100%;height:auto;background:var(--bg);touch-action:none}
+  .stage-in{position:relative;border:1px solid rgba(217,164,65,.16);border-radius:9px;overflow:hidden;min-height:240px}
+  #cv{position:relative;z-index:2;display:block;width:100%;height:auto;background:var(--bg);touch-action:none}
   #cap{min-height:52px;display:flex;align-items:center;justify-content:center;padding:9px 16px;border-top:1px solid var(--line);margin-top:12px;font-size:15px;flex-wrap:wrap}
   #cap span{color:var(--muted);transition:color .12s}
   #cap span.on{color:var(--accent2)}
@@ -771,8 +771,8 @@ function updateSignals(now,dt){
   let bl=$('#tgBlink').checked?blinkAmt(now)*en:0;
   let tx,ty;const fresh=(now-S.pointer.t)<3500;
   if(CAM.on&&CAM.seen){
-    tx=clamp(CAM.x*1.2,-1,1);
-    ty=clamp(CAM.y*1.1,-1,1);
+    tx=clamp(CAM.x*0.55,-1,1);
+    ty=clamp(CAM.y*0.5,-1,1);
   }else if($('#tgGaze').checked&&fresh){
     const r=CV.getBoundingClientRect();
     tx=clamp((S.pointer.x-(r.left+r.width/2))/(r.width*.55),-1,1);
@@ -1186,7 +1186,7 @@ function drawShow(now,dt){
   const bob=2*Math.sin(now*.0009)*sig.en*mot;
   g.save();
   const lean=CAM.on?CAM.x:0, lift=CAM.on?CAM.y:0, yaw=CAM.on?CAM.yaw:0, zs=CAM.on?CAM.z:1;
-  g.translate(W/2+lean*W*0.18,H/2+bob-lift*H*0.1);g.rotate(rot+yaw);
+  g.translate(W/2+lean*W*0.07,H/2+bob-lift*H*0.04);g.rotate(rot+yaw*0.45);
   g.scale(breath*1.016*zs,breath*1.016*zs);
   g.translate(-W/2,-H/2);
   applyCal(g,W,H);
@@ -1901,19 +1901,21 @@ function stopCam(){
 function toggleCam(){CAM.on?stopCam():startCam()}
 function applyFace(x,y,bw,bh,W,H){
   const cx=(x+bw/2)/W*2-1, cy=(y+bh/2)/H*2-1;
-  CAM.x+=(cx-CAM.x)*0.35;
-  CAM.y+=(cy-CAM.y)*0.35;
-  CAM.yaw+=(cx*0.42-CAM.yaw)*0.35;
+  if(Math.abs(cx-CAM.x)<0.035) cx=CAM.x;
+  if(Math.abs(cy-CAM.y)<0.035) cy=CAM.y;
+  CAM.x+=(cx-CAM.x)*0.07;
+  CAM.y+=(cy-CAM.y)*0.07;
+  CAM.yaw+=(cx*0.22-CAM.yaw)*0.06;
   if(!CAM.base) CAM.base=bw;
-  else CAM.base=CAM.base*0.98+bw*0.02;
-  const z=clamp(CAM.base/(bw||1),0.9,1.12);
-  CAM.z+=(z-CAM.z)*0.3;
+  else CAM.base=CAM.base*0.995+bw*0.005;
+  const z=clamp(CAM.base/(bw||1),0.96,1.05);
+  CAM.z+=(z-CAM.z)*0.05;
   CAM.seen=true;
   CAM.box={x,y,w:bw,h:bh,W,H};
   $('#camPip').classList.add('face');
 }
 function loseFace(){
-  CAM.x*=0.9;CAM.y*=0.9;CAM.yaw*=0.9;CAM.z+=(1-CAM.z)*0.15;
+  CAM.x*=0.97;CAM.y*=0.97;CAM.yaw*=0.97;CAM.z+=(1-CAM.z)*0.04;
   if(Math.abs(CAM.x)<0.02&&Math.abs(CAM.y)<0.02) CAM.seen=false;
   CAM.box=null;
   $('#camPip').classList.remove('face');
