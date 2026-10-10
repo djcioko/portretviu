@@ -160,7 +160,7 @@
   body.fs #cv{position:relative;z-index:1;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;background:transparent}
 
   .stage-in{position:relative}
-  .bgstage{display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;background:#070605}
+  .bgstage{display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;background:#070605;pointer-events:none}
   body.fs #main.on{width:min(100vw,calc(100vh * 9 / 16))!important;height:100vh!important;max-width:100vw}
   body.fs .stage,body.fs .stage-in{width:100%;height:100%}
   body.fs #cv{position:relative;z-index:1;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;background:transparent}
@@ -1176,8 +1176,9 @@ function drawShow(now,dt){
   const g=CTX,W=CV.width,H=CV.height;
   g.setTransform(1,0,0,1,0,0);
   const fs=document.body.classList.contains('fs');
-  if(fs){g.clearRect(0,0,W,H)}
-  else{g.fillStyle='#171210';g.fillRect(0,0,W,H);drawBackground(g,W,H)}
+  if(fs){g.clearRect(0,0,W,H);if(BG.vid&&BG.vid.paused)playBg()}
+  else{g.fillStyle='#171210';g.fillRect(0,0,W,H)}
+  drawBackground(g,W,H);
   const mot=sig.mot;
   const brAmp=$('#tgBreath').checked?.007*sig.en*mot:0;
   const breath=1+brAmp*Math.sin(now*.0016);
@@ -1543,8 +1544,10 @@ function coverDraw(g,src,W,H){
   g.drawImage(src,(W-dw)/2,(H-dh)/2,dw,dh);
 }
 function drawBackground(g,W,H){
-  if(BG.vid&&BG.vid.readyState>=2) coverDraw(g,BG.vid,W,H);
-  else if(BG.img&&BG.img.complete) coverDraw(g,BG.img,W,H);
+  if(BG.vid){
+    if(BG.vid.paused) playBg();
+    if(BG.vid.readyState>=2) coverDraw(g,BG.vid,W,H);
+  }else if(BG.img&&BG.img.complete) coverDraw(g,BG.img,W,H);
 }
 function paintRecBadge(g){
   return;
@@ -1558,20 +1561,31 @@ function paintRecBadge(g){
   g.fillText('REC',40,31);
   g.restore();
 }
+function isVideoFile(f){
+  const t=(f.type||'').toLowerCase(), n=(f.name||'').toLowerCase();
+  return t.startsWith('video/')||/\.(mp4|webm|mov|mkv|ogg|m4v|avi)$/.test(n);
+}
+function playBg(){
+  const v=BG.vid; if(!v) return;
+  v.muted=true; v.loop=true; v.playsInline=true;
+  const go=()=>v.play().catch(()=>{});
+  if(v.readyState>=2) go(); else v.addEventListener('canplay',go,{once:true});
+}
 function loadBg(f,fromLib){
   if(!f)return;
-  if(!fromLib) saveLib('bg',f.name,f,f.type||'image/png');
+  if(!fromLib) saveLib('bg',f.name,f,isVideoFile(f)?(f.type||'video/mp4'):(f.type||'image/png'));
   clearBg(true);
   const url=URL.createObjectURL(f);
   BG.url=url;
-  if(f.type.startsWith('video/')){
-    const v=document.createElement('video');
-    v.src=url;v.loop=true;v.muted=true;v.playsInline=true;v.autoplay=true;
-    v.onloadeddata=()=>v.play().catch(()=>{});
-    BG.vid=v;
-    const sv=$('#bgStageV'); sv.src=url; sv.style.display='block'; $('#bgStageI').style.display='none';
+  if(isVideoFile(f)){
+    const v=$('#bgStageV');
+    v.loop=true; v.muted=true; v.playsInline=true; v.autoplay=true;
+    v.src=url; v.style.display='block';
+    $('#bgStageI').style.display='none';
+    BG.vid=v; BG.img=null;
+    v.onloadeddata=playBg; v.oncanplay=playBg; playBg();
     $('#bgChip').innerHTML='<div class="filechip">▣ '+f.name+'</div>';
-    toast('Fundal video în buclă, fără sunet — se vede prin PNG-ul transparent.');
+    toast('Fundal video pornit, în buclă, în spatele portretului.');
   }else{
     const im=new Image();
     im.onload=()=>{BG.img=im;const si=$('#bgStageI');si.src=url;si.style.display='block';$('#bgStageV').style.display='none';$('#bgChip').innerHTML='<div class="filechip">▣ '+f.name+'</div>';toast('Fundal imagine așezat pe tot cadrul vertical.');};
