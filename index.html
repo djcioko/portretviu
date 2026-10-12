@@ -268,6 +268,13 @@
             <button class="tbtn" data-t="brow">Sprânceană</button>
             <button class="tbtn" data-t="hand">Mână</button>
           </div>
+          <div class="gap"></div>
+          <div class="btnrow">
+            <button class="btn primary" id="btnPlace" type="button">Pune formă</button>
+            <button class="btn ghost" id="btnPlaceSmall" type="button" title="Micșorează forma selectată">−</button>
+            <button class="btn ghost" id="btnPlaceBig" type="button" title="Mărește forma selectată">+</button>
+          </div>
+          <div class="steps-hint" style="margin-top:8px">Pe telefon: apasă <b>Pune formă</b>. Se așază un cerc sau un oval. Trage-l cu degetul. + / − îl scalează. Poți sări peste mapare dacă vrei doar mișcarea portretului.</div>
           <div id="regList"></div>
           <div class="steps-hint">
             Alege tipul, apoi <b>desenează conturul</b> pe poză (encercuiești zona; se închide singur la ridicarea degetului).<br>
@@ -278,6 +285,8 @@
           </div>
           <div class="gap"></div>
           <button class="btn primary" id="btnDone" disabled>Gata — pornește animația</button>
+          <div class="gap"></div>
+          <button class="btn ghost" id="btnSkip" type="button">Treci peste — doar mișcare</button>
           <div class="gap"></div>
           <button class="btn ghost" id="btnSaveMark" type="button">Salvează maparea în listă</button>
           <div class="gap"></div>
@@ -295,6 +304,18 @@
           <button class="btn ghost" id="btnCalReset" type="button">Resetează poziția și mărimea</button>
           <div class="gap"></div>
           <span id="calRead" style="color:var(--accent2);font-size:13px">100% · 0, 0</span>
+        </div>
+        <div class="box">
+          <h4>Recepție</h4>
+          <div class="voice-note">Când e bifat, camera stă deschisă. Portretul apare doar când se vede o față și dispare când cadrul e gol. Dacă fața stă, se rostește mesajul o dată.</div>
+          <div class="gap"></div>
+          <label class="chk"><input type="checkbox" id="tgRecep"> Salută automat când vede o față</label>
+          <div class="gap"></div>
+          <textarea id="recepTxt" spellcheck="false">Bun venit! Cu ce vă putem ajuta astăzi?</textarea>
+          <div class="ctl">
+            <label>Stă în cadru <b id="recepHoldVal">1.5s</b></label>
+            <input type="range" id="recepHold" min="0.5" max="4" step="0.5" value="1.5">
+          </div>
         </div>
         <div class="box">
           <h4>Text de rostit</h4>
@@ -1193,6 +1214,8 @@ function drawShow(now,dt){
   if(fs){g.clearRect(0,0,W,H);if(BG.vid&&BG.vid.paused)playBg()}
   else{g.fillStyle='#171210';g.fillRect(0,0,W,H)}
   drawBackground(g,W,H);
+  const hide=!CAM.seen && $('#tgRecep') && $('#tgRecep').checked;
+  if(hide){paintRecBadge(g);return}
   const mot=sig.mot;
   const brAmp=$('#tgBreath').checked?.007*sig.en*mot:0;
   const breath=1+brAmp*Math.sin(now*.0016);
@@ -1531,6 +1554,63 @@ function loadDemo(){
     toast('Portretul e gata. Scrie textul și apasă „Vorbește".');
   };
   im.src=DEMO_FACE;
+}
+
+function placeShape(){
+  if(!IMG){toast('Încarcă întâi o poză.');return}
+  const W=CV.width,H=CV.height,cx=W/2,cy=H/2;
+  const n=REGS.filter(r=>r.type===CURTYPE).length;
+  let pts,opt={};
+  if(CURTYPE==='mouth') pts=ellipsePts(cx,cy+H*0.16,W*0.11,H*0.07);
+  else if(CURTYPE==='eye'){
+    const side=n%2===0?-1:1;
+    pts=ellipsePts(cx+side*W*0.12,cy-H*0.06,W*0.045,H*0.03);
+  }else if(CURTYPE==='brow'){
+    const side=n%2===0?-1:1;
+    pts=ellipsePts(cx+side*W*0.12,cy-H*0.12,W*0.05,H*0.018);
+  }else{
+    const side=n%2===0?-1:1;
+    pts=ellipsePts(cx+side*W*0.22,cy+H*0.28,W*0.07,H*0.1);
+    opt.side=side; opt.pivot={x:cx+side*W*0.08,y:cy+H*0.05};
+  }
+  const r=buildRegion(CURTYPE,pts,opt);
+  if(!r){toast('Forma e prea mică.');return}
+  if(CURTYPE==='mouth'){const old=REGS.find(q=>q.type==='mouth');if(old)REGS.splice(REGS.indexOf(old),1)}
+  REGS.push(r); SEL=r;
+  if(CURTYPE==='eye'){const b=autoBrowFor(r);if(b)REGS.push(b)}
+  renderRegList();
+  toast('Formă așezată. Trage-o. + și − o scalează.');
+}
+function scaleSel(f){
+  if(!SEL){toast('Selectează o formă din listă.');return}
+  const r=SEL,cx=r.cx,cy=r.cy;
+  for(const q of r.pts){q.x=cx+(q.x-cx)*f;q.y=cy+(q.y-cy)*f}
+  const nb=buildRegion(r.type,r.pts,{pivot:r.pivot,side:r.side});
+  if(nb){const ix=REGS.indexOf(r);REGS[ix]=nb;SEL=nb;renderRegList()}
+}
+function skipMark(){
+  SEL=null;setView('show');
+  toast('Fără mapare — portretul doar se mișcă cu capul.');
+}
+const RECEP={seenSince:0,lostSince:0,greeted:false};
+function tickRecep(now){
+  const box=$('#tgRecep');
+  if(!box||!box.checked||MODE!=='show'||!IMG){RECEP.seenSince=0;return}
+  if(!CAM.on) startCam();
+  const hold=((+$('#recepHold').value)||1.5)*1000;
+  if(CAM.seen){
+    RECEP.lostSince=0;
+    if(!RECEP.seenSince) RECEP.seenSince=now;
+    if(!RECEP.greeted && !S.speaking && now-RECEP.seenSince>hold){
+      const t=($('#recepTxt').value||'').trim();
+      if(t){$('#txt').value=t; RECEP.greeted=true; speakTTS();}
+    }
+  }else{
+    if(!RECEP.lostSince) RECEP.lostSince=now;
+    if(RECEP.greeted && now-RECEP.lostSince>2200){RECEP.greeted=false; RECEP.seenSince=0; RECEP.lostSince=0}
+    if(!RECEP.greeted) RECEP.seenSince=0;
+  }
+  const hv=$('#recepHoldVal'); if(hv) hv.textContent=((+$('#recepHold').value)||1.5).toFixed(1)+'s';
 }
 function finishMark(){
   if(!REGS.some(r=>r.type==='mouth')||!REGS.some(r=>r.type==='eye'))return;
@@ -2239,6 +2319,10 @@ $('#btnClearTxt2').addEventListener('click',clearMicText);
 $('#btnMicRt').addEventListener('click',toggleMicRt);
 
 $('#btnDone').addEventListener('click',finishMark);
+$('#btnPlace').addEventListener('click',placeShape);
+$('#btnPlaceSmall').addEventListener('click',()=>scaleSel(0.9));
+$('#btnPlaceBig').addEventListener('click',()=>scaleSel(1.12));
+$('#btnSkip').addEventListener('click',skipMark);
 $('#btnCancel').addEventListener('click',()=>setView('hero'));
 $('#btnCalReset').addEventListener('click',resetCal);
 $('#btnCalMark').addEventListener('click',()=>{
@@ -2287,6 +2371,7 @@ function frame(now){
     const left=Math.max(0,Math.ceil((LIVE.waitMark-now)/1000));
     if(left>0){$('#hudLbl').textContent='pauză '+left+'s';$('#liveHud').classList.add('wait');}
   }
+  tickRecep(now);
   if(MODE==='mark'&&IMG)drawMark(now);
   else if(MODE==='show'&&IMG)drawShow(now,dt);
   requestAnimationFrame(frame);
