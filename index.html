@@ -1214,8 +1214,13 @@ function drawShow(now,dt){
   if(fs){g.clearRect(0,0,W,H);if(BG.vid&&BG.vid.paused)playBg()}
   else{g.fillStyle='#171210';g.fillRect(0,0,W,H)}
   drawBackground(g,W,H);
-  const hide=!CAM.seen && $('#tgRecep') && $('#tgRecep').checked;
-  if(hide){paintRecBadge(g);return}
+  const recepOn = $('#tgRecep') && $('#tgRecep').checked;
+  const hide = recepOn && !CAM.seen;
+  if(hide){
+    // exact ca în VTuber: nu desenăm PNG-ul când nu e față
+    paintRecBadge(g);
+    return;
+  }
   const mot=sig.mot;
   const brAmp=$('#tgBreath').checked?.007*sig.en*mot:0;
   const breath=1+brAmp*Math.sin(now*.0016);
@@ -1606,7 +1611,14 @@ function tickRecep(now){
     if(!RECEP.seenSince) RECEP.seenSince=now;
     if(!RECEP.greeted && !S.speaking && now-RECEP.seenSince>hold){
       const t=($('#recepTxt').value||'').trim();
-      if(t){$('#txt').value=t; RECEP.greeted=true; speakTTS();}
+      if(t) $('#txt').value=t;
+      RECEP.greeted=true;
+      // Preferă fișierul audio încărcat (voicechanger etc.), altfel TTS
+      if(AUD && AUD.buffer){
+        playAudio();
+      } else if(t){
+        speakTTS();
+      }
     }
   }else{
     if(!RECEP.lostSince) RECEP.lostSince=now;
