@@ -1595,7 +1595,10 @@ function skipMark(){
 const RECEP={seenSince:0,lostSince:0,greeted:false};
 function tickRecep(now){
   const box=$('#tgRecep');
-  if(!box||!box.checked||MODE!=='show'||!IMG){RECEP.seenSince=0;return}
+  if(!box||!box.checked||MODE!=='show'||!IMG){
+    RECEP.seenSince=0; RECEP.lostSince=0;
+    return;
+  }
   if(!CAM.on) startCam();
   const hold=((+$('#recepHold').value)||1.5)*1000;
   if(CAM.seen){
@@ -1607,7 +1610,10 @@ function tickRecep(now){
     }
   }else{
     if(!RECEP.lostSince) RECEP.lostSince=now;
-    if(RECEP.greeted && now-RECEP.lostSince>2200){RECEP.greeted=false; RECEP.seenSince=0; RECEP.lostSince=0}
+    // după ce dispare fața ~2s, resetează ca să salute din nou data viitoare
+    if(RECEP.greeted && now-RECEP.lostSince>2000){
+      RECEP.greeted=false; RECEP.seenSince=0; RECEP.lostSince=0;
+    }
     if(!RECEP.greeted) RECEP.seenSince=0;
   }
   const hv=$('#recepHoldVal'); if(hv) hv.textContent=((+$('#recepHold').value)||1.5).toFixed(1)+'s';
@@ -1964,7 +1970,7 @@ function stopLive(){
 
 
 
-const CAM={on:false,video:null,stream:null,c:null,g:null,detector:null,busy:false,x:0,y:0,yaw:0,z:1,seen:false,box:null,base:0};
+const CAM={on:false,video:null,stream:null,c:null,g:null,detector:null,busy:false,x:0,y:0,yaw:0,z:1,seen:false,box:null,base:0,lastSeen:0};
 async function startCam(){
   if(CAM.on) return;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast('Browserul nu deschide camera.');return}
@@ -2009,12 +2015,14 @@ function applyFace(x,y,bw,bh,W,H){
   CAM.z+=(z-CAM.z)*0.08;
   CAM.meshBox={x:cx0-bw2/2,y:cy0-bh2/2,w:bw2,h:bh2};
   CAM.seen=true;
+  CAM.lastSeen=performance.now();
   CAM.box={x,y,w:bw,h:bh,W,H};
   $('#camPip').classList.add('face');
 }
 function loseFace(){
   CAM.x*=0.97;CAM.y*=0.97;CAM.yaw*=0.97;CAM.z+=(1-CAM.z)*0.04;
-  if(Math.abs(CAM.x)<0.02&&Math.abs(CAM.y)<0.02) CAM.seen=false;
+  // ascunde PNG după ~400ms fără față (evită pâlpâiri)
+  if(performance.now() - (CAM.lastSeen||0) > 400) CAM.seen=false;
   CAM.box=null;
   $('#camPip').classList.remove('face');
 }
