@@ -2030,13 +2030,24 @@ function applyFace(x,y,bw,bh,W,H){
   CAM.lastSeen=performance.now();
   CAM.box={x,y,w:bw,h:bh,W,H};
   $('#camPip').classList.add('face');
+  // arată overlay-ul doar când e față
+  const ov=$('#faceOv');
+  if(ov) ov.classList.add('on');
 }
 function loseFace(){
   CAM.x*=0.97;CAM.y*=0.97;CAM.yaw*=0.97;CAM.z+=(1-CAM.z)*0.04;
   // ascunde PNG după ~400ms fără față (evită pâlpâiri)
   if(performance.now() - (CAM.lastSeen||0) > 400) CAM.seen=false;
   CAM.box=null;
+  CAM.meshBox=null;
   $('#camPip').classList.remove('face');
+  // ascunde complet cercul / overlay-ul când nu e față
+  const ov=$('#faceOv');
+  if(ov){
+    ov.classList.remove('on');
+    const g=ov.getContext('2d');
+    g.clearRect(0,0,ov.width,ov.height);
+  }
 }
 function skinFace(data,w,h){
   let x0=w,y0=h,x1=0,y1=0,n=0,sx=0,sy=0;
@@ -2054,7 +2065,7 @@ function paintFaceBox(){
   const ov=$('#faceOv'); if(!ov) return;
   const g=ov.getContext('2d');
   g.clearRect(0,0,ov.width,ov.height);
-  if(!CAM.box) return;
+  if(!CAM.seen || !CAM.box) return;
   const b=CAM.meshBox||CAM.box, sx=ov.width/CAM.box.W, sy=ov.height/CAM.box.H;
   const cx=(b.x+b.w/2)*sx, cy=(b.y+b.h/2)*sy, rx=b.w*sx*0.5, ry=b.h*sy*0.55;
   g.save();
