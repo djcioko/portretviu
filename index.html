@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 <style>
   :root{
     --bg:#171210; --panel:#1f1813; --panel2:#28201a;
@@ -178,7 +180,7 @@
   #liveHud.wait #hudDot{background:var(--accent2)}
   #camPip{position:fixed;left:14px;bottom:16px;width:74px;height:98px;object-fit:cover;border-radius:12px;border:1px solid var(--line);z-index:48;display:none;transform:scaleX(-1);background:#111}
   #camPip.on{display:block}
-  #faceOv{position:fixed;left:14px;bottom:16px;width:74px;height:98px;border-radius:12px;z-index:49;display:none;pointer-events:none;transform:scaleX(-1)}
+  #faceOv{display:none!important}
   #faceOv.on{display:block}
   #camPip.face{border-color:var(--accent2)}
   body.fs #camPip.on{left:max(14px,calc(50vw - min(50vw,50vh * 9 / 16) - 88px))}
@@ -307,7 +309,7 @@
         </div>
         <div class="box">
           <h4>Recepție</h4>
-          <div class="voice-note">Când e bifat, camera stă deschisă. Portretul apare doar când se vede o față și dispare când cadrul e gol. Dacă fața stă, se rostește mesajul o dată.</div>
+          <div class="voice-note">Cu camera pornită, portretul apare doar când se vede o față și dispare când cadrul e gol. Bifă mai jos ca să și salute automat.</div>
           <div class="gap"></div>
           <label class="chk"><input type="checkbox" id="tgRecep"> Salută automat când vede o față</label>
           <div class="gap"></div>
@@ -1214,10 +1216,8 @@ function drawShow(now,dt){
   if(fs){g.clearRect(0,0,W,H);if(BG.vid&&BG.vid.paused)playBg()}
   else{g.fillStyle='#171210';g.fillRect(0,0,W,H)}
   drawBackground(g,W,H);
-  const recepOn = $('#tgRecep') && $('#tgRecep').checked;
-  const hide = recepOn && !CAM.seen;
+  const hide = CAM.on && !CAM.seen;
   if(hide){
-    // exact ca în VTuber: nu desenăm PNG-ul când nu e față
     paintRecBadge(g);
     return;
   }
@@ -1995,13 +1995,31 @@ async function startCam(){
     CAM.c=document.createElement('canvas');CAM.c.width=160;CAM.c.height=120;
     CAM.g=CAM.c.getContext('2d',{willReadFrequently:true});
     v.classList.add('on');
-    $('#faceOv').classList.add('on');
     $('#btnCam').classList.add('on');
-    if(window.FaceDetector){
-      try{CAM.detector=new FaceDetector({fastMode:true,maxDetectedFaces:1})}catch(e){CAM.detector=null}
-    }
-    toast(CAM.detector?'Camera deschisă — fața e detectată, PNG-ul urmărește capul.':'Camera deschisă — urmăresc fața după ten. Mișcă capul.');
+    startMesh();
+    toast('Camera deschisă. PNG-ul apare doar când se vede o față.');
   }catch(e){toast('Camera e blocată — permite accesul ca PNG-ul să-ți urmeze fața.');}
+}
+function startMesh(){
+  if(CAM.mesh) return;
+  if(!window.FaceMesh){toast('MediaPipe nu s-a încărcat. Reîncarcă pagina.');return}
+  const mesh=new FaceMesh({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/'+f});
+  mesh.setOptions({maxNumFaces:1,refineLandmarks:false,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
+  mesh.onResults(r=>{
+    const faces=r.multiFaceLandmarks;
+    if(faces&&faces.length){
+      const lm=faces[0], nose=lm[1];
+      const W=CAM.c?CAM.c.width:160, H=CAM.c?CAM.c.height:120;
+      const x=(nose.x-0.12)*W, y=(nose.y-0.16)*H, bw=0.24*W, bh=0.32*H;
+      applyFace(Math.max(0,x),Math.max(0,y),bw,bh,W,H);
+    }else loseFace();
+  });
+  CAM.mesh=mesh;
+  (async function loop(){
+    if(!CAM.on||!CAM.video) return;
+    try{ if(CAM.video.readyState>=2) await mesh.send({image:CAM.video}); }catch(e){}
+    setTimeout(loop,80);
+  })();
 }
 function stopCam(){
   if(CAM.stream) CAM.stream.getTracks().forEach(t=>t.stop());
@@ -2032,7 +2050,7 @@ function applyFace(x,y,bw,bh,W,H){
   $('#camPip').classList.add('face');
   // arată overlay-ul doar când e față
   const ov=$('#faceOv');
-  if(ov) ov.classList.add('on');
+  
 }
 function loseFace(){
   CAM.x*=0.97;CAM.y*=0.97;CAM.yaw*=0.97;CAM.z+=(1-CAM.z)*0.04;
@@ -2061,7 +2079,7 @@ function skinFace(data,w,h){
   if(n>28&&(x1-x0)>12&&(y1-y0)>14) applyFace(x0,y0,x1-x0,y1-y0,w,h);
   else loseFace();
 }
-function paintFaceBox(){
+function paintFaceBox(){ return;
   const ov=$('#faceOv'); if(!ov) return;
   const g=ov.getContext('2d');
   g.clearRect(0,0,ov.width,ov.height);
