@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
 <style>
   :root{
     --bg:#171210; --panel:#1f1813; --panel2:#28201a;
@@ -300,6 +301,29 @@
 
       <div id="showPanel" style="display:none;flex-direction:column;gap:16px">
         <div class="box">
+          <h4>Video prezentare</h4>
+          <div class="voice-note">Încarcă un video cu persoana. WebM cu fundal transparent se vede direct. La MP4 poți scoate fundalul cu AI.</div>
+          <div class="gap"></div>
+          <div class="btnrow">
+            <button class="btn primary" id="btnOv" type="button">Încarcă video</button>
+            <button class="btn ghost" id="btnOvClear" type="button">Scoate</button>
+          </div>
+          <input type="file" id="ovFile" accept="video/*,.webm,.mp4" hidden>
+          <div id="ovChip"></div>
+          <div class="gap"></div>
+          <label class="chk"><input type="checkbox" id="tgOv"> Folosește video în loc de PNG</label>
+          <div class="gap"></div>
+          <label class="chk"><input type="checkbox" id="tgCut"> Scoate fundalul (AI)</label>
+          <div class="ctl">
+            <label>Prag tăiere <b id="cutVal">50%</b></label>
+            <input type="range" id="fxCut" min="10" max="90" step="1" value="50">
+          </div>
+          <div class="ctl">
+            <label>Luminozitate <b id="briVal">100%</b></label>
+            <input type="range" id="fxBri" min="60" max="160" step="2" value="100">
+          </div>
+        </div>
+        <div class="box">
           <h4>Calibrare PNG</h4>
           <div class="voice-note">Trage cu mouse-ul sau degetul ca să muți portretul. Rotița sau ciupirea cu două degete îl mărește și îl micșorează.</div>
           <div class="gap"></div>
@@ -503,6 +527,7 @@
   </section>
 </div>
 <video id="camPip" muted playsinline></video>
+<video id="ovVid" muted playsinline loop style="display:none"></video>
 <canvas id="faceOv" width="148" height="196"></canvas>
 <button id="liveHud" type="button" title="Live microfon — pauză 5 secunde, apoi pornește"><span id="hudDot"></span><span id="hudLbl">live off</span></button>
 <div id="toast"></div>
@@ -1208,6 +1233,64 @@ function paintMouthInterior(reg,sig){
   }
   g.restore();
 }
+
+const OV={vid:null,on:false,cut:false,mask:null,seg:null,busy:false};
+function startSeg(){
+  if(OV.seg||!window.SelfieSegmentation) return;
+  const s=new SelfieSegmentation({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/'+f});
+  s.setOptions({modelSelection:1});
+  s.onResults(r=>{OV.mask=r.segmentationMask; OV.busy=false});
+  OV.seg=s;
+}
+function loadOv(f){
+  if(!f) return;
+  const url=URL.createObjectURL(f);
+  const v=$('#ovVid');
+  v.src=url; v.loop=true; v.muted=true; v.playsInline=true;
+  v.onloadeddata=()=>v.play().catch(()=>{});
+  OV.vid=v; OV.on=true;
+  $('#tgOv').checked=true;
+  $('#ovChip').innerHTML='<div class="filechip">▶ '+f.name+'</div>';
+  const alpha=/webm/i.test(f.type)||/\.webm$/i.test(f.name);
+  toast(alpha?'Video cu alpha încărcat.':'Video încărcat. Bifează „Scoate fundalul” dacă are fundal.');
+  startSeg();
+}
+function clearOv(){
+  const v=$('#ovVid');
+  try{v.pause();v.removeAttribute('src');v.load()}catch(e){}
+  OV.vid=null; OV.on=false; OV.mask=null;
+  $('#tgOv').checked=false;
+  $('#ovChip').innerHTML='';
+  toast('Video scos.');
+}
+function drawOverlayVideo(g,W,H){
+  const v=OV.vid;
+  if(!v||v.readyState<2) return;
+  const cut=$('#tgCut')&&$('#tgCut').checked;
+  const bri=((+$('#fxBri').value)||100)/100;
+  const thr=((+$('#fxCut').value)||50)/100;
+  g.save();
+  g.filter='brightness('+bri+')';
+  if(cut&&OV.mask){
+    const tmp=document.createElement('canvas');
+    tmp.width=v.videoWidth||W; tmp.height=v.videoHeight||H;
+    const tg=tmp.getContext('2d');
+    tg.drawImage(OV.mask,0,0,tmp.width,tmp.height);
+    tg.globalCompositeOperation='source-in';
+    tg.drawImage(v,0,0,tmp.width,tmp.height);
+    // soften edge with threshold by dimming low mask — mask already applied
+    g.drawImage(tmp,0,0,W,H);
+  }else{
+    g.drawImage(v,0,0,W,H);
+  }
+  g.restore();
+  if(cut&&OV.seg&&!OV.busy){
+    OV.busy=true;
+    OV.seg.send({image:v}).catch(()=>{OV.busy=false});
+  }
+  const cv=$('#cutVal'); if(cv) cv.textContent=Math.round(thr*100)+'%';
+  const bv=$('#briVal'); if(bv) bv.textContent=Math.round(bri*100)+'%';
+}
 function drawShow(now,dt){
   const sig=updateSignals(now,dt);
   const g=CTX,W=CV.width,H=CV.height;
@@ -1232,7 +1315,9 @@ function drawShow(now,dt){
   g.scale(breath*1.016*zs,breath*1.016*zs);
   g.translate(-W/2,-H/2);
   applyCal(g,W,H);
-  g.drawImage(IMG,0,0);
+  const useOv=$('#tgOv')&&$('#tgOv').checked&&OV.vid;
+  if(useOv){drawOverlayVideo(g,W,H)}
+  else{g.drawImage(IMG,0,0)}
   const mouth=REGS.find(r=>r.type==='mouth');
   /* amprenta fiecărei mâini: șterge originalul, apoi lipește warp-ul din umăr */
   for(const r of REGS)if(r.type==='hand')eraseRegion(r);
@@ -2374,6 +2459,9 @@ $('#btnPlaceBig').addEventListener('click',()=>scaleSel(1.12));
 $('#btnSkip').addEventListener('click',skipMark);
 $('#btnCancel').addEventListener('click',()=>setView('hero'));
 $('#btnCalReset').addEventListener('click',resetCal);
+$('#btnOv').addEventListener('click',()=>$('#ovFile').click());
+$('#ovFile').addEventListener('change',e=>loadOv(e.target.files[0]));
+$('#btnOvClear').addEventListener('click',clearOv);
 $('#btnCalMark').addEventListener('click',()=>{
   CAL.mark=!CAL.mark;
   $('#btnCalMark').classList.toggle('primary',CAL.mark);
