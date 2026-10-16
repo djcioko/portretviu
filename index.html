@@ -527,7 +527,7 @@
   </section>
 </div>
 <video id="camPip" muted playsinline></video>
-<video id="ovVid" muted playsinline loop style="display:none"></video>
+<video id="ovVid" playsinline loop style="display:none"></video>
 <canvas id="faceOv" width="148" height="196"></canvas>
 <button id="liveHud" type="button" title="Live microfon — pauză 5 secunde, apoi pornește"><span id="hudDot"></span><span id="hudLbl">live off</span></button>
 <div id="toast"></div>
@@ -1246,8 +1246,8 @@ function loadOv(f){
   if(!f) return;
   const url=URL.createObjectURL(f);
   const v=$('#ovVid');
-  v.src=url; v.loop=true; v.muted=true; v.playsInline=true;
-  v.onloadeddata=()=>v.play().catch(()=>{});
+  v.src=url; v.loop=true; v.muted=false; v.volume=1; v.playsInline=true;
+  v.onloadeddata=()=>{v.muted=false;v.volume=1;v.play().catch(()=>toast('Apasă oriunde pe pagină ca să pornească sunetul video-ului.'));};
   OV.vid=v; OV.on=true;
   $('#tgOv').checked=true;
   $('#ovChip').innerHTML='<div class="filechip">▶ '+f.name+'</div>';
