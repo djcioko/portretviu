@@ -1263,25 +1263,41 @@ function clearOv(){
   $('#ovChip').innerHTML='';
   toast('Video scos.');
 }
+function fitVideo(vw,vh,W,H){
+  if(!vw||!vh) return {x:0,y:0,w:W,h:H};
+  const s=Math.min(W/vw,H/vh);
+  const w=vw*s, h=vh*s;
+  return {x:(W-w)/2,y:(H-h)/2,w,h};
+}
+function setOvPlay(on){
+  const v=OV.vid; if(!v) return;
+  if(on){
+    if(v.paused) v.play().catch(()=>{});
+    v.muted=false;
+  }else{
+    if(!v.paused) v.pause();
+    v.muted=true;
+  }
+}
 function drawOverlayVideo(g,W,H){
   const v=OV.vid;
   if(!v||v.readyState<2) return;
   const cut=$('#tgCut')&&$('#tgCut').checked;
   const bri=((+$('#fxBri').value)||100)/100;
   const thr=((+$('#fxCut').value)||50)/100;
+  const box=fitVideo(v.videoWidth,v.videoHeight,W,H);
   g.save();
   g.filter='brightness('+bri+')';
   if(cut&&OV.mask){
     const tmp=document.createElement('canvas');
-    tmp.width=v.videoWidth||W; tmp.height=v.videoHeight||H;
+    tmp.width=v.videoWidth||box.w; tmp.height=v.videoHeight||box.h;
     const tg=tmp.getContext('2d');
     tg.drawImage(OV.mask,0,0,tmp.width,tmp.height);
     tg.globalCompositeOperation='source-in';
     tg.drawImage(v,0,0,tmp.width,tmp.height);
-    // soften edge with threshold by dimming low mask — mask already applied
-    g.drawImage(tmp,0,0,W,H);
+    g.drawImage(tmp,box.x,box.y,box.w,box.h);
   }else{
-    g.drawImage(v,0,0,W,H);
+    g.drawImage(v,box.x,box.y,box.w,box.h);
   }
   g.restore();
   if(cut&&OV.seg&&!OV.busy){
@@ -1300,6 +1316,8 @@ function drawShow(now,dt){
   else{g.fillStyle='#171210';g.fillRect(0,0,W,H)}
   drawBackground(g,W,H);
   const hide = CAM.on && !CAM.seen;
+  const useOv=$('#tgOv')&&$('#tgOv').checked&&OV.vid;
+  if(useOv) setOvPlay(!hide);
   if(hide){
     paintRecBadge(g);
     return;
@@ -1315,7 +1333,6 @@ function drawShow(now,dt){
   g.scale(breath*1.016*zs,breath*1.016*zs);
   g.translate(-W/2,-H/2);
   applyCal(g,W,H);
-  const useOv=$('#tgOv')&&$('#tgOv').checked&&OV.vid;
   if(useOv){drawOverlayVideo(g,W,H)}
   else{g.drawImage(IMG,0,0)}
   const mouth=REGS.find(r=>r.type==='mouth');
